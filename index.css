@@ -262,7 +262,7 @@
   }
 
   #home .action {
-    padding: 1rem 1.6rem;
+    padding: 0.8rem 1.2rem;
     background-color: green;
     border: none;
     border-radius: 4%;
@@ -353,9 +353,11 @@
        #header ul .right {
            padding-left: 0.4rem;
        }
-       #content .container #funding {
-           padding: 0 2rem;
-       }
+       #home img {
+          margin-top: 2rem;
+          width: 18rem;
+          height: 18rem;
+        }
        .doc-page {
            display: block;
        }
