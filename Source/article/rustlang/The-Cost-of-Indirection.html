@@ -1,0 +1,412 @@
+<h1 id="%e9%97%b4%e6%8e%a5%e8%b0%83%e7%94%a8%e7%9a%84%e6%88%90%e6%9c%ac%e7%bf%bb%e8%af%91">间接(调用)的成本【翻译】</h1>
+<p>翻译 : Rust碎碎念  2020-03-15</p>
+<blockquote>
+<p>原文标题: The Cost of Indirection
+原文链接: <a href="https://www.joshmcguigan.com/blog/cost-of-indirection-rust/">https://www.joshmcguigan.com/blog/cost-of-indirection-rust/</a></p>
+</blockquote>
+<p>提供零成本抽象是Rust语言的目标之一。在本文中，我们将会探索各种间接方式的性能损耗</p>
+<h2 id="the-benchmark">The benchmark</h2>
+<p>我想要一个关于间接方式(Indirection)的损耗的基准测试(benchmark)，所以我需要最小化一个函数在任意单次调用时的工作量。我选择了第n个奇数问题(基于第n个素数问题改编)，使用了一个相当低效的办法。</p>
+<pre><code class="language-rust"><div><span class="hljs-keyword">use</span> std::time::Instant;
+
+<span class="hljs-function"><span class="hljs-keyword">fn</span> <span class="hljs-title">main</span></span>() {
+    <span class="hljs-keyword">let</span> start_time = Instant::now();
+    <span class="hljs-keyword">let</span> result = find_nth_odd(<span class="hljs-number">1_000_000_000</span>);
+    <span class="hljs-keyword">let</span> elapsed_time = start_time.elapsed().as_millis();
+
+    <span class="hljs-built_in">println!</span>(<span class="hljs-string">"{} in {} ms"</span>, result, elapsed_time);
+}
+
+<span class="hljs-function"><span class="hljs-keyword">fn</span> <span class="hljs-title">find_nth_odd</span></span>(n: <span class="hljs-built_in">u64</span>) -&gt; <span class="hljs-built_in">u64</span> {
+    letmut i = <span class="hljs-number">0</span>;
+    letmut odd_count = <span class="hljs-number">0</span>;
+
+    <span class="hljs-keyword">while</span> odd_count != n {
+        i += <span class="hljs-number">1</span>;
+        <span class="hljs-keyword">if</span> is_odd(i) {
+            odd_count += <span class="hljs-number">1</span>;
+        }
+    }
+
+    i
+}
+
+<span class="hljs-function"><span class="hljs-keyword">fn</span> <span class="hljs-title">is_odd</span></span>(n: <span class="hljs-built_in">u64</span>) -&gt; <span class="hljs-built_in">bool</span> {
+    n % <span class="hljs-number">2</span> == <span class="hljs-number">1</span>
+}
+</div></code></pre>
+<p>它在1042毫秒内找到了第十亿个奇数。这篇文章里提到的性能参数都是跑了5次之后的平均值，使用1.41稳定版在release模式下运行(也就是 <code>cargo run --release --bin $MY_BIN</code>)。</p>
+<h2 id="struct-impl">Struct impl</h2>
+<p>最简单的间接调用就是把<code>is_odd</code>函数移动到一个结构体的impl块里。</p>
+<pre><code class="language-rust"><div><span class="hljs-keyword">use</span> std::time::Instant;
+
+<span class="hljs-function"><span class="hljs-keyword">fn</span> <span class="hljs-title">main</span></span>() {
+    <span class="hljs-keyword">let</span> finder = OddFinder;
+
+    <span class="hljs-keyword">let</span> start_time = Instant::now();
+    <span class="hljs-keyword">let</span> result = find_nth_odd(finder, <span class="hljs-number">1_000_000_000</span>);
+    <span class="hljs-keyword">let</span> elapsed_time = start_time.elapsed().as_millis();
+
+    <span class="hljs-built_in">println!</span>(<span class="hljs-string">"{} in {} ms"</span>, result, elapsed_time);
+}
+
+<span class="hljs-function"><span class="hljs-keyword">fn</span> <span class="hljs-title">find_nth_odd</span></span>(odd_finder: OddFinder, n: <span class="hljs-built_in">u64</span>) -&gt; <span class="hljs-built_in">u64</span> {
+    letmut i = <span class="hljs-number">0</span>;
+    letmut odd_count = <span class="hljs-number">0</span>;
+
+    <span class="hljs-keyword">while</span> odd_count != n {
+        i += <span class="hljs-number">1</span>;
+        <span class="hljs-keyword">if</span> odd_finder.is_odd(i) {
+            odd_count += <span class="hljs-number">1</span>;
+        }
+    }
+
+    i
+}
+
+<span class="hljs-class"><span class="hljs-keyword">struct</span> <span class="hljs-title">OddFinder</span></span>;
+
+<span class="hljs-keyword">impl</span> OddFinder {
+    <span class="hljs-function"><span class="hljs-keyword">fn</span> <span class="hljs-title">is_odd</span></span>(&amp;<span class="hljs-keyword">self</span>, n: <span class="hljs-built_in">u64</span>) -&gt; <span class="hljs-built_in">bool</span> {
+        n % <span class="hljs-number">2</span> == <span class="hljs-number">1</span>
+    }
+}
+</div></code></pre>
+<p>这是对Rust的零成本抽象很好地证明，在1032毫秒内就找到了第十亿个奇数。</p>
+<h2 id="trait">Trait</h2>
+<p>如果<code>is_odd</code>方法是一个trait的一部分而不是直接在结构体上实现，会发生什么呢？</p>
+<pre><code class="language-rust"><div><span class="hljs-keyword">use</span> std::time::Instant;
+
+
+                          <span class="hljs-function"><span class="hljs-keyword">fn</span> <span class="hljs-title">main</span></span>() {
+    
+                            <span class="hljs-keyword">let</span> finder = OddFinderOne;
+
+   
+                             <span class="hljs-keyword">let</span> start_time = Instant::now();
+    
+                             <span class="hljs-keyword">let</span> result = find_nth_odd(finder, <span class="hljs-number">1_000_000_000</span>);
+    <span class="hljs-keyword">let</span> elapsed_time = start_time.elapsed().as_millis();
+
+    <span class="hljs-built_in">println!</span>(<span class="hljs-string">"{} in {} ms"</span>, result, elapsed_time);
+}
+
+<span class="hljs-function"><span class="hljs-keyword">fn</span> <span class="hljs-title">find_nth_odd</span></span>(odd_finder: OddFinderOne, n: <span class="hljs-built_in">u64</span>) -&gt; <span class="hljs-built_in">u64</span> {
+    letmut i = <span class="hljs-number">0</span>;
+    letmut odd_count = <span class="hljs-number">0</span>;
+
+    <span class="hljs-keyword">while</span> odd_count != n {
+        i += <span class="hljs-number">1</span>;
+        <span class="hljs-keyword">if</span> odd_finder.is_odd(i) {
+            odd_count += <span class="hljs-number">1</span>;
+        }
+    }
+
+    i
+}
+
+<span class="hljs-class"><span class="hljs-keyword">trait</span> <span class="hljs-title">OddFinder</span></span> {
+    <span class="hljs-function"><span class="hljs-keyword">fn</span> <span class="hljs-title">is_odd</span></span>(&amp;<span class="hljs-keyword">self</span>, n: <span class="hljs-built_in">u64</span>) -&gt; <span class="hljs-built_in">bool</span>;
+}
+
+<span class="hljs-class"><span class="hljs-keyword">struct</span> <span class="hljs-title">OddFinderOne</span></span>;
+
+<span class="hljs-keyword">impl</span> OddFinder <span class="hljs-keyword">for</span> OddFinderOne {
+    <span class="hljs-function"><span class="hljs-keyword">fn</span> <span class="hljs-title">is_odd</span></span>(&amp;<span class="hljs-keyword">self</span>, n: <span class="hljs-built_in">u64</span>) -&gt; <span class="hljs-built_in">bool</span> {
+        n % <span class="hljs-number">2</span> == <span class="hljs-number">1</span>
+    }
+}
+</div></code></pre>
+<p>结果令人惊讶，即使<code>find_nth_odd</code>函数仍然使用特定的<code>OddFinderOne</code>实现，把函数移动到trait里并不是一个零成本抽象。这一版，找到第十亿个奇数总共花了1340毫秒。</p>
+<h2 id="generics">Generics</h2>
+<p>如果存在多个结构体都具备查找第十亿个奇数的能力，我们可以使用泛型来让find_nth_odd方法使用其中的一个。</p>
+<pre><code class="language-rust"><div><span class="hljs-keyword">use</span> std::time::Instant;
+
+<span class="hljs-function"><span class="hljs-keyword">fn</span> <span class="hljs-title">main</span></span>() {
+    <span class="hljs-keyword">let</span> finder = OddFinderOne;
+
+    <span class="hljs-keyword">let</span> start_time = Instant::now();
+    <span class="hljs-keyword">let</span> result = find_nth_odd(finder, <span class="hljs-number">1_000_000_000</span>);
+    <span class="hljs-keyword">let</span> elapsed_time = start_time.elapsed().as_millis();
+
+    <span class="hljs-built_in">println!</span>(<span class="hljs-string">"{} in {} ms"</span>, result, elapsed_time);
+}
+
+<span class="hljs-function"><span class="hljs-keyword">fn</span> <span class="hljs-title">find_nth_odd</span></span>&lt;T: OddFinder&gt;(odd_finder: T, n: <span class="hljs-built_in">u64</span>) -&gt; <span class="hljs-built_in">u64</span> {
+    letmut i = <span class="hljs-number">0</span>;
+    letmut odd_count = <span class="hljs-number">0</span>;
+
+    <span class="hljs-keyword">while</span> odd_count != n {
+        i += <span class="hljs-number">1</span>;
+        <span class="hljs-keyword">if</span> odd_finder.is_odd(i) {
+            odd_count += <span class="hljs-number">1</span>;
+        }
+    }
+
+    i
+}
+
+<span class="hljs-class"><span class="hljs-keyword">trait</span> <span class="hljs-title">OddFinder</span></span> {
+    <span class="hljs-function"><span class="hljs-keyword">fn</span> <span class="hljs-title">is_odd</span></span>(&amp;<span class="hljs-keyword">self</span>, n: <span class="hljs-built_in">u64</span>) -&gt; <span class="hljs-built_in">bool</span>;
+}
+
+<span class="hljs-class"><span class="hljs-keyword">struct</span> <span class="hljs-title">OddFinderOne</span></span>;
+
+<span class="hljs-keyword">impl</span> OddFinder <span class="hljs-keyword">for</span> OddFinderOne {
+    <span class="hljs-function"><span class="hljs-keyword">fn</span> <span class="hljs-title">is_odd</span></span>(&amp;<span class="hljs-keyword">self</span>, n: <span class="hljs-built_in">u64</span>) -&gt; <span class="hljs-built_in">bool</span> {
+        n % <span class="hljs-number">2</span> == <span class="hljs-number">1</span>
+    }
+}
+
+<span class="hljs-class"><span class="hljs-keyword">struct</span> <span class="hljs-title">OddFinderTwo</span></span>;
+
+<span class="hljs-keyword">impl</span> OddFinder <span class="hljs-keyword">for</span> OddFinderTwo {
+    <span class="hljs-function"><span class="hljs-keyword">fn</span> <span class="hljs-title">is_odd</span></span>(&amp;<span class="hljs-keyword">self</span>, _n: <span class="hljs-built_in">u64</span>) -&gt; <span class="hljs-built_in">bool</span> {
+        <span class="hljs-built_in">unimplemented!</span>()
+    }
+}
+</div></code></pre>
+<p>这是另一个零成本抽象的正面示例。它在本质上和上面的基于trait的非泛型版本的代码应该是一样快的，查找第十亿个基数一共花费了1322毫秒。</p>
+<h2 id="trait-object">Trait Object</h2>
+<p>除了把<code>find_nth_odd</code>写成泛型函数之外，另一个方式是让它使用trait对象作为参数从而接收任意的<code>OddFinder</code>实现。</p>
+<pre><code class="language-rust"><div><span class="hljs-keyword">use</span> std::time::Instant;
+
+<span class="hljs-function"><span class="hljs-keyword">fn</span> <span class="hljs-title">main</span></span>() {
+    <span class="hljs-keyword">let</span> finder = OddFinderOne;
+
+    <span class="hljs-keyword">let</span> start_time = Instant::now();
+    <span class="hljs-keyword">let</span> result = find_nth_odd(&amp;finder, <span class="hljs-number">1_000_000_000</span>);
+    <span class="hljs-keyword">let</span> elapsed_time = start_time.elapsed().as_millis();
+
+    <span class="hljs-built_in">println!</span>(<span class="hljs-string">"{} in {} ms"</span>, result, elapsed_time);
+}
+
+
+<span class="hljs-function"><span class="hljs-keyword">fn</span> <span class="hljs-title">find_nth_odd</span></span>(odd_finder: &amp; dyn OddFinder, n: <span class="hljs-built_in">u64</span>) -&gt; <span class="hljs-built_in">u64</span> {
+    letmut i = <span class="hljs-number">0</span>;
+    letmut odd_count = <span class="hljs-number">0</span>;
+
+    <span class="hljs-keyword">while</span> odd_count != n {
+        i += <span class="hljs-number">1</span>;
+        <span class="hljs-keyword">if</span> odd_finder.is_odd(i) {
+            odd_count += <span class="hljs-number">1</span>;
+        }
+    }
+
+    i
+}
+
+<span class="hljs-class"><span class="hljs-keyword">trait</span> <span class="hljs-title">OddFinder</span></span> {
+    <span class="hljs-function"><span class="hljs-keyword">fn</span> <span class="hljs-title">is_odd</span></span>(&amp;<span class="hljs-keyword">self</span>, n: <span class="hljs-built_in">u64</span>) -&gt; <span class="hljs-built_in">bool</span>;
+}
+
+<span class="hljs-class"><span class="hljs-keyword">struct</span> <span class="hljs-title">OddFinderOne</span></span>;
+
+<span class="hljs-keyword">impl</span> OddFinder <span class="hljs-keyword">for</span> OddFinderOne {
+    <span class="hljs-function"><span class="hljs-keyword">fn</span> <span class="hljs-title">is_odd</span></span>(&amp;<span class="hljs-keyword">self</span>, n: <span class="hljs-built_in">u64</span>) -&gt; <span class="hljs-built_in">bool</span> {
+        n % <span class="hljs-number">2</span> == <span class="hljs-number">1</span>
+    }
+}
+
+<span class="hljs-class"><span class="hljs-keyword">struct</span> <span class="hljs-title">OddFinderTwo</span></span>;
+
+<span class="hljs-keyword">impl</span> OddFinder <span class="hljs-keyword">for</span> OddFinderTwo {
+    <span class="hljs-function"><span class="hljs-keyword">fn</span> <span class="hljs-title">is_odd</span></span>(&amp;<span class="hljs-keyword">self</span>, _n: <span class="hljs-built_in">u64</span>) -&gt; <span class="hljs-built_in">bool</span> {
+        <span class="hljs-built_in">unimplemented!</span>()
+    }
+}
+</div></code></pre>
+<p>我预期这样做性能会比使用泛型差一些，因为trait对象应该需要动态分发(dynamic dispatch)(程序不得不在运行时查找正确的is_odd实现所在的位置)，但是编译器似乎能够知道odd_finder总是OddFinderOne然后进行一些额外的优化，因为这个版本计算第十亿个数耗时1039毫秒(跑5次的平均值)。这不仅仅是比泛型版本的实现要好，而且实际上与基准水平相当，这是一个令我很惊讶的结果</p>
+<h2 id="boxed-trait-object">Boxed Trait Object</h2>
+<p>另一种使用trait对象的方式是传递<code>Box&lt;dyn Trait&gt;</code>(相对于上面的<code>&amp; dyn Trait</code>)。</p>
+<pre><code class="language-rust"><div><span class="hljs-keyword">use</span> std::time::Instant;
+
+<span class="hljs-function"><span class="hljs-keyword">fn</span> <span class="hljs-title">main</span></span>() {
+    <span class="hljs-keyword">let</span> finder: <span class="hljs-built_in">Box</span>&lt;dyn OddFinder&gt; = <span class="hljs-built_in">Box</span>::new(OddFinderOne);
+
+    <span class="hljs-keyword">let</span> start_time = Instant::now();
+    <span class="hljs-keyword">let</span> result = find_nth_odd(finder, <span class="hljs-number">1_000_000_000</span>);
+    <span class="hljs-keyword">let</span> elapsed_time = start_time.elapsed().as_millis();
+
+    <span class="hljs-built_in">println!</span>(<span class="hljs-string">"{} in {} ms"</span>, result, elapsed_time);
+}
+
+
+<span class="hljs-function"><span class="hljs-keyword">fn</span> <span class="hljs-title">find_nth_odd</span></span>(odd_finder: <span class="hljs-built_in">Box</span>&lt;dyn OddFinder&gt;, n: <span class="hljs-built_in">u64</span>) -&gt; <span class="hljs-built_in">u64</span> {
+    letmut i = <span class="hljs-number">0</span>;
+    letmut odd_count = <span class="hljs-number">0</span>;
+
+    <span class="hljs-keyword">while</span> odd_count != n {
+        i += <span class="hljs-number">1</span>;
+        <span class="hljs-keyword">if</span> odd_finder.is_odd(i) {
+            odd_count += <span class="hljs-number">1</span>;
+        }
+    }
+
+    i
+}
+
+<span class="hljs-class"><span class="hljs-keyword">trait</span> <span class="hljs-title">OddFinder</span></span> {
+    <span class="hljs-function"><span class="hljs-keyword">fn</span> <span class="hljs-title">is_odd</span></span>(&amp;<span class="hljs-keyword">self</span>, n: <span class="hljs-built_in">u64</span>) -&gt; <span class="hljs-built_in">bool</span>;
+}
+
+<span class="hljs-class"><span class="hljs-keyword">struct</span> <span class="hljs-title">OddFinderOne</span></span>;
+
+<span class="hljs-keyword">impl</span> OddFinder <span class="hljs-keyword">for</span> OddFinderOne {
+    <span class="hljs-function"><span class="hljs-keyword">fn</span> <span class="hljs-title">is_odd</span></span>(&amp;<span class="hljs-keyword">self</span>, n: <span class="hljs-built_in">u64</span>) -&gt; <span class="hljs-built_in">bool</span> {
+        n % <span class="hljs-number">2</span> == <span class="hljs-number">1</span>
+    }
+}
+
+<span class="hljs-class"><span class="hljs-keyword">struct</span> <span class="hljs-title">OddFinderTwo</span></span>;
+
+<span class="hljs-keyword">impl</span> OddFinder <span class="hljs-keyword">for</span> OddFinderTwo {
+    <span class="hljs-function"><span class="hljs-keyword">fn</span> <span class="hljs-title">is_odd</span></span>(&amp;<span class="hljs-keyword">self</span>, _n: <span class="hljs-built_in">u64</span>) -&gt; <span class="hljs-built_in">bool</span> {
+        <span class="hljs-built_in">unimplemented!</span>()
+    }
+}
+</div></code></pre>
+<p>这样计算出第十亿个奇数耗时是1314毫秒。</p>
+<h2 id="runtime-dynamism">Runtime dynamism</h2>
+<p>在这一点上，我们还没有进行让编译器无法在编译期间知道的抽象。即使我们有两个OddFinder实现，但是我们总是使用OddFinderOne在程序中进行硬编码。这里我们将会修改，看看编译器无法进行针对类型优化的时候，会发生什么？</p>
+<pre><code class="language-rust"><div><span class="hljs-keyword">use</span> std::{env, time::Instant};
+
+<span class="hljs-function"><span class="hljs-keyword">fn</span> <span class="hljs-title">main</span></span>() {
+    <span class="hljs-comment">// I don't intend to ever set this environment variable. The purpose</span>
+    <span class="hljs-comment">// of this is only to ensure the compiler won't be able to know</span>
+    <span class="hljs-comment">// which of the two OddFinder implementations we will use.</span>
+    <span class="hljs-keyword">let</span> finder: <span class="hljs-built_in">Box</span>&lt;dyn OddFinder&gt; = <span class="hljs-keyword">match</span> env::var(<span class="hljs-string">"USE_FINDER_TWO"</span>) {
+        <span class="hljs-literal">Ok</span>(use_finder_two) <span class="hljs-keyword">if</span> use_finder_two == <span class="hljs-built_in">String</span>::from(<span class="hljs-string">"True"</span>)
+            =&gt; <span class="hljs-built_in">Box</span>::new(OddFinderTwo),
+        _ =&gt; <span class="hljs-built_in">Box</span>::new(OddFinderOne),
+    };
+
+    <span class="hljs-keyword">let</span> start_time = Instant::now();
+    <span class="hljs-keyword">let</span> result = find_nth_odd(finder, <span class="hljs-number">1_000_000_000</span>);
+    <span class="hljs-keyword">let</span> elapsed_time = start_time.elapsed().as_millis();
+
+    <span class="hljs-built_in">println!</span>(<span class="hljs-string">"{} in {} ms"</span>, result, elapsed_time);
+}
+
+
+<span class="hljs-function"><span class="hljs-keyword">fn</span> <span class="hljs-title">find_nth_odd</span></span>(odd_finder: <span class="hljs-built_in">Box</span>&lt;dyn OddFinder&gt;, n: <span class="hljs-built_in">u64</span>) -&gt; <span class="hljs-built_in">u64</span> {
+    letmut i = <span class="hljs-number">0</span>;
+    letmut odd_count = <span class="hljs-number">0</span>;
+
+    <span class="hljs-keyword">while</span> odd_count != n {
+        i += <span class="hljs-number">1</span>;
+        <span class="hljs-keyword">if</span> odd_finder.is_odd(i) {
+            odd_count += <span class="hljs-number">1</span>;
+        }
+    }
+
+    i
+}
+
+<span class="hljs-class"><span class="hljs-keyword">trait</span> <span class="hljs-title">OddFinder</span></span> {
+    <span class="hljs-function"><span class="hljs-keyword">fn</span> <span class="hljs-title">is_odd</span></span>(&amp;<span class="hljs-keyword">self</span>, n: <span class="hljs-built_in">u64</span>) -&gt; <span class="hljs-built_in">bool</span>;
+}
+
+<span class="hljs-class"><span class="hljs-keyword">struct</span> <span class="hljs-title">OddFinderOne</span></span>;
+
+<span class="hljs-keyword">impl</span> OddFinder <span class="hljs-keyword">for</span> OddFinderOne {
+    <span class="hljs-function"><span class="hljs-keyword">fn</span> <span class="hljs-title">is_odd</span></span>(&amp;<span class="hljs-keyword">self</span>, n: <span class="hljs-built_in">u64</span>) -&gt; <span class="hljs-built_in">bool</span> {
+        n % <span class="hljs-number">2</span> == <span class="hljs-number">1</span>
+    }
+}
+
+<span class="hljs-class"><span class="hljs-keyword">struct</span> <span class="hljs-title">OddFinderTwo</span></span>;
+
+<span class="hljs-keyword">impl</span> OddFinder <span class="hljs-keyword">for</span> OddFinderTwo {
+    <span class="hljs-function"><span class="hljs-keyword">fn</span> <span class="hljs-title">is_odd</span></span>(&amp;<span class="hljs-keyword">self</span>, _n: <span class="hljs-built_in">u64</span>) -&gt; <span class="hljs-built_in">bool</span> {
+        <span class="hljs-built_in">unimplemented!</span>()
+    }
+}
+</div></code></pre>
+<p>正如预料，这一版慢了很多，因为我们确保了在这里基于使用哪个OddFinder实现来决定调用哪个is_odd函数的时候需要动态分发(dynamic patch)。这个版本找到第十亿个奇数耗时3424毫秒。</p>
+<h2 id="enum">Enum</h2>
+<p>除了使用trait对象，我们可以修改find_nth_odd函数接收一个包含OddFinder所有可能实现的枚举(enum)。</p>
+<pre><code class="language-rust"><div><span class="hljs-keyword">use</span> std::{env, time::Instant};
+
+<span class="hljs-function"><span class="hljs-keyword">fn</span> <span class="hljs-title">main</span></span>() {
+    <span class="hljs-comment">// I don't intend to ever set this environment variable. The purpose</span>
+    <span class="hljs-comment">// of this is only to ensure the compiler won't be able to know</span>
+    <span class="hljs-comment">// which of the two OddFinder implementations we will use.</span>
+    <span class="hljs-keyword">let</span> finder: OddFinders = <span class="hljs-keyword">match</span> env::var(<span class="hljs-string">"USE_FINDER_TWO"</span>) {
+        <span class="hljs-literal">Ok</span>(use_finder_two) <span class="hljs-keyword">if</span> use_finder_two == <span class="hljs-built_in">String</span>::from(<span class="hljs-string">"True"</span>)
+            =&gt; OddFinders::Two(OddFinderTwo),
+        _ =&gt; OddFinders::One(OddFinderOne),
+    };
+
+    <span class="hljs-keyword">let</span> start_time = Instant::now();
+    <span class="hljs-keyword">let</span> result = find_nth_odd(finder, <span class="hljs-number">1_000_000_000</span>);
+    <span class="hljs-keyword">let</span> elapsed_time = start_time.elapsed().as_millis();
+
+    <span class="hljs-built_in">println!</span>(<span class="hljs-string">"{} in {} ms"</span>, result, elapsed_time);
+}
+
+
+<span class="hljs-function"><span class="hljs-keyword">fn</span> <span class="hljs-title">find_nth_odd</span></span>(odd_finder: OddFinders, n: <span class="hljs-built_in">u64</span>) -&gt; <span class="hljs-built_in">u64</span> {
+    letmut i = <span class="hljs-number">0</span>;
+    letmut odd_count = <span class="hljs-number">0</span>;
+
+    <span class="hljs-keyword">while</span> odd_count != n {
+        i += <span class="hljs-number">1</span>;
+        <span class="hljs-keyword">if</span> odd_finder.is_odd(i) {
+            odd_count += <span class="hljs-number">1</span>;
+        }
+    }
+
+    i
+}
+
+<span class="hljs-class"><span class="hljs-keyword">trait</span> <span class="hljs-title">OddFinder</span></span> {
+    <span class="hljs-function"><span class="hljs-keyword">fn</span> <span class="hljs-title">is_odd</span></span>(&amp;<span class="hljs-keyword">self</span>, n: <span class="hljs-built_in">u64</span>) -&gt; <span class="hljs-built_in">bool</span>;
+}
+
+<span class="hljs-class"><span class="hljs-keyword">struct</span> <span class="hljs-title">OddFinderOne</span></span>;
+
+<span class="hljs-keyword">impl</span> OddFinder <span class="hljs-keyword">for</span> OddFinderOne {
+    <span class="hljs-function"><span class="hljs-keyword">fn</span> <span class="hljs-title">is_odd</span></span>(&amp;<span class="hljs-keyword">self</span>, n: <span class="hljs-built_in">u64</span>) -&gt; <span class="hljs-built_in">bool</span> {
+        n % <span class="hljs-number">2</span> == <span class="hljs-number">1</span>
+    }
+}
+
+<span class="hljs-class"><span class="hljs-keyword">struct</span> <span class="hljs-title">OddFinderTwo</span></span>;
+
+<span class="hljs-keyword">impl</span> OddFinder <span class="hljs-keyword">for</span> OddFinderTwo {
+    <span class="hljs-function"><span class="hljs-keyword">fn</span> <span class="hljs-title">is_odd</span></span>(&amp;<span class="hljs-keyword">self</span>, _n: <span class="hljs-built_in">u64</span>) -&gt; <span class="hljs-built_in">bool</span> {
+        <span class="hljs-built_in">unimplemented!</span>()
+    }
+}
+
+<span class="hljs-class"><span class="hljs-keyword">enum</span> <span class="hljs-title">OddFinders</span></span> {
+    One(OddFinderOne),
+    Two(OddFinderTwo),
+}
+
+<span class="hljs-keyword">impl</span> OddFinder <span class="hljs-keyword">for</span> OddFinders {
+    <span class="hljs-function"><span class="hljs-keyword">fn</span> <span class="hljs-title">is_odd</span></span>(&amp;<span class="hljs-keyword">self</span>, n: <span class="hljs-built_in">u64</span>) -&gt; <span class="hljs-built_in">bool</span> {
+        matchself {
+            OddFinders::One(finder) =&gt; finder.is_odd(n),
+            OddFinders::Two(finder) =&gt; finder.is_odd(n),
+        }
+    }
+}
+</div></code></pre>
+<p>相对于boxed trait对象，这里我们把动态分发换成了运行时的枚举匹配。这样在性能上有了很大改进，这个版本找到第十亿个数共耗时1366毫秒。</p>
+<h2 id="inline-never">Inline never</h2>
+<p>出于好玩，我在<code>is_odd</code>函数上加了<code>#\[inline(never)]</code>标签后重新跑了基准测试。这次耗时提高到了3378毫秒。</p>
+<h2 id="conclusion">Conclusion</h2>
+<p>当使用一个会进行优化的编译器时，进行性能预测是很困难的。通过一种工作负载(workload)推断出的性能结果也很难适用于另一种工作负载(workload)。</p>
+<p>除了这些免责声明之外，我还发现了一些有趣的东西。第一个是，把一个方法移动到trait里会增加运行时成本，即使是直接在结构体上调用(相对于通过trait对象调用)。第二个是，至少在这次基准测试中，创建一个包含所有trait实现的枚举并把它传到函数里能够明显(这里接近3倍)快于使用一个boxed trait 对象。</p>
+<p>所有的代码可以在这里获得。如果你发现这些基准测试有问题可以随便到github提issue或者pull request。</p>
+<h2 id="update-1">Update #1</h2>
+<p>Reddit用户boscop建议我使用std::hint::blackbox重复对trait对象的测试。这个作用相当于在boxed trait测试中检测环境变量，并且使用blackbox装箱&amp; dyn OddFinder测试结果和Box<dyn OddFinder>类似，耗时3243毫秒。</p>
+<h2 id="update-2">Update #2</h2>
+<p>Reddit用户 Shnatsel建议我提交一个Rust编译期的bug报告，关于把is_odd方法移动到trait里，但是find_nth_odd仍然使用具体的结构体作为参数的问题。我已经在论坛创建了bug报告。</p>
+<p><img src="https://s2.ax1x.com/2020/03/10/8CrPaD.jpg" alt="img"></p>
+
+[set title Rust中文 / article / rustlang / The-Cost-of-Indirection]	
+[set doc-section rustlang-The-Cost-of-Indirection]	
+[stash doc-content][require raw ../_side.html] 

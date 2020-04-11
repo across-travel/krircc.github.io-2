@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <link rel="icon" href="/favicon.ico" title="krircc">
+    <link rel="icon" href="https://avatars0.githubusercontent.com/u/18028295?s=200&v=4" title="krircc">
     <link rel="stylesheet" type="text/css" href="/static/markdown.css" />
     <link rel="stylesheet" type="text/css" href="/static/highlight.css" />
     <link rel="stylesheet" type="text/css" href="/index.css" />
@@ -11,21 +11,27 @@
   </head>
   <body class="vscode-light">
     <div id="page" class="page-section-root">
-      <div id="header">
-        <div class="container"> 
-          <ul id="header-main-links">
-            <li class="tag"><a id="main-section-link-root" href="/"><img src="/static/img/krircc.png" alt="krircc" class="logo">&emsp;<span><strong>krircc</strong></span></a></li>
-            <li class="tag"><a id="kayer" href="/article/general/hello">文章</a></li>
-            <li class="right"><a href="/about">关于</a></li>
-          </ul>
+      <div id="mnav">
+    
+        <div id="lnav">
+          <div id="left">
+            <a id="front" href="/"><img src="/static/img/krircc.png"/>&emsp;<span>krircc</span></a>
+            <span id="dlnav">
+              <a class="tail" id="nav-doc" href="/article/rustlang/The-Cost-of-Indirection.html" >文章</a>
+            </span>
+          </div>
+          <label id="menu"><img src="/static/img/menu.jpg" ></label>
         </div>
-      </div>
+        <div id="rnav">
+            <li ><a  id="nav-power" href="/power.html" >Power</a></li>
+            <li ><a  id="nav-about" href="/about.html" >关于</a></li>
+        </div> 
+    </div>
 
       <div id="content">
         <div class="container"><div id="home">
-  <img src="./static/img/futurefellow.png"> 
+  <img src="./static/img/krircc.png"> 
   <h1 ><strong>krircc</strong></h1>
-  <p class="description">微信公众号: FutureFellow </p> 
   <button class="action"><a href="/about.html"><strong>关于krircc</strong></a></button>
 </div>
 
@@ -39,5 +45,18 @@
         &copy; 2019  <strong>krircc</strong>
       </div>
     </div>
+    <script async>
+      window.onload = function() {
+            let menu = document.getElementById('menu');
+            menu.addEventListener('click', function() {
+                let nav = document.getElementById('rnav');
+                if (nav.style.height == 'auto') {
+                        nav.style.height = '0';
+                }else{
+                        nav.style.height = 'auto';
+                }
+            }, false)
+    }
+</script>
   </body>
 </html>
