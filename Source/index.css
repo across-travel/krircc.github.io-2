@@ -204,7 +204,7 @@
       margin-left: 1rem;
   }
 
-   .page-section-doc #nav-doc, .page-section-power #nav-power, .page-section-about #nav-about {
+   .page-section-doc #nav-doc, .page-section-park #nav-park, .page-section-about #nav-about {
      color: green;
    }
 
@@ -220,17 +220,17 @@
         margin: 0 auto;
         width: 100%;
       }
-      #content .container #power, #content .container #about,  #content .container #rust {
+      #content .container #park, #content .container #about,  #content .container #rust {
           padding: 2rem 2rem 0;
       }
   }
 
   @media only screen and (min-width: 767px) {
-    #content .container #power, #content .container #about,  .page-section-doc #content .container, #content .container {
+    #content .container #park, #content .container #about,  .page-section-doc #content .container, #content .container {
         margin: 0 auto;
         width: 66%;
     }
-    #content .container #power,  #content .container #about,  #content .container #rust {
+    #content .container #park,  #content .container #about,  #content .container #rust {
       padding-top: 6rem;
   }
 }
