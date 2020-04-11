@@ -244,7 +244,7 @@
     }
     
     #home img {
-        margin-top: 6rem;
+        margin-top: 8rem;
         width: 15rem;
         height: 15rem;
     }
@@ -260,7 +260,28 @@
         font-size: 1.1rem;
         color: ivory;
     }
+
+    @media only screen and (max-width: 767px) {
+      #home img {
+        margin-top: 5rem;
+        width: 15rem;
+        height: 15rem;
+    }
+  }
     
+  /* =================================================================
+        About
+        ================================================================= */  
+  #about #here {
+        padding: 0.3rem 0.8rem;
+        background-color: rgb(77, 165, 247);
+        border: none;
+        border-radius: 4%;
+  }
+  #about #here a {
+    color: ivory;
+}
+
 
   /* =================================================================
         Documentation
